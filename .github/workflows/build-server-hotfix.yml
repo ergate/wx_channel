@@ -1,0 +1,59 @@
+name: Build server hotfix
+
+on:
+  push:
+    branches: ["refactor/server-shared-feed-timeout"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    name: Windows standard executable
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+    env:
+      CGO_ENABLED: "1"
+      CC: gcc
+      GOTOOLCHAIN: local
+      GOFLAGS: -tags=zombiezen_sqlite
+      CGO_CFLAGS: -O2 -g -std=gnu11
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Set up Windows C compiler
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          path-type: inherit
+          install: mingw-w64-x86_64-gcc
+
+      - name: Configure standard variant
+        run: |
+          sed -i 's/viper.SetDefault("cloud_enabled", true)/viper.SetDefault("cloud_enabled", false)/' internal/config/config.go
+          sed -i 's/viper.SetDefault("auto_open_channels", true)/viper.SetDefault("auto_open_channels", false)/' internal/config/config.go
+
+      - name: Build executable
+        run: >-
+          go build -mod=readonly
+          -ldflags="-w -s -extldflags '-static'"
+          -o wx_channel_v5.7.13_shared_feed_timeout.exe .
+
+      - name: Verify embedded version
+        run: ./wx_channel_v5.7.13_shared_feed_timeout.exe version
+
+      - name: Upload executable
+        uses: actions/upload-artifact@v4
+        with:
+          name: wx_channel-v5.7.13-shared-feed-timeout
+          path: wx_channel_v5.7.13_shared_feed_timeout.exe
+          if-no-files-found: error
+          retention-days: 14

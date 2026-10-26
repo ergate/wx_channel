@@ -196,6 +196,18 @@ async function main() {
   assertEqual(shareRequestFallbackPayload.scene, 141, 'share request fallback should still use encrypted export scene');
   assertEqual(shareRequestFallbackPayload.encrypted_objectid, 'AI7ZDceho', 'share request fallback should reuse shortUri as encrypted object id');
 
+  const shareTimeoutFallbackEnv = loadAPIClientModule({
+    fetch: () => new Promise(() => {}),
+  });
+  shareTimeoutFallbackEnv.api.sharedFeedInfoTimeoutMs = 5;
+  const shareTimeoutFallbackResult = await shareTimeoutFallbackEnv.api.fetchFeedProfile({
+    url: 'https://weixin.qq.com/sph/Ag9hESS4Ty',
+  });
+
+  assertEqual(shareTimeoutFallbackEnv.finderCalls.length, 1, 'timed-out share lookup should fall back to finderGetCommentDetail');
+  assertEqual(shareTimeoutFallbackResult.payload.scene, 141, 'timed-out share fallback should preserve encrypted export scene');
+  assertEqual(shareTimeoutFallbackResult.payload.encrypted_objectid, 'Ag9hESS4Ty', 'timed-out share fallback should reuse shortUri as encrypted object id');
+
   const normalEnv = loadAPIClientModule();
   const normalPayload = await normalEnv.api.buildFeedProfilePayload({
     url: 'https://channels.weixin.qq.com/web/pages/feed?oid=Zm9v&nid=YmFy',

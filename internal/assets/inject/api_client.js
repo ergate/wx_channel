@@ -27,6 +27,7 @@ window.__wx_api_client = {
   apiProbeAt: 0,
   apiProbeError: '',
   apiMethods: {},
+  sharedFeedInfoTimeoutMs: 8000,
 
   // 初始化
   init: function () {
@@ -140,25 +141,53 @@ window.__wx_api_client = {
     }
   },
 
+  fetchWithTimeout: function (url, options, timeoutMs) {
+    var timer = null;
+    var timeout = new Promise(function (_, reject) {
+      timer = setTimeout(function () {
+        reject(new Error('请求超时'));
+      }, timeoutMs);
+    });
+
+    return Promise.race([fetch(url, options), timeout]).then(
+      function (value) {
+        clearTimeout(timer);
+        return value;
+      },
+      function (err) {
+        clearTimeout(timer);
+        throw err;
+      }
+    );
+  },
+
   fetchSharedFeedInfo: async function (rawURL) {
     var shortUri = this.extractSharedFeedShortUri(rawURL);
     if (!shortUri) {
       throw new Error('无法从分享链接中解析 shortUri');
     }
 
-    var resp = await fetch('/finder-preview/api/feed/get_feed_info', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      credentials: 'include',
-      body: JSON.stringify({
-        baseReq: {
-          generalToken: ''
+    var resp;
+    try {
+      resp = await this.fetchWithTimeout('/finder-preview/api/feed/get_feed_info', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
         },
-        shortUri: shortUri
-      })
-    });
+        credentials: 'include',
+        body: JSON.stringify({
+          baseReq: {
+            generalToken: ''
+          },
+          shortUri: shortUri
+        })
+      }, this.sharedFeedInfoTimeoutMs);
+    } catch (err) {
+      if (err && err.message === '请求超时') {
+        throw new Error('获取分享视频信息超时');
+      }
+      throw err;
+    }
 
     if (!resp.ok) {
       throw new Error('获取分享视频信息失败: HTTP ' + resp.status);
