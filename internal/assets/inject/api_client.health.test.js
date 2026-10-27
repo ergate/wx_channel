@@ -75,6 +75,50 @@ async function main() {
   assert(successEnv.api.apiFunctional === true, 'successful probe must set apiFunctional');
   assert(successEnv.messages.some((message) => message.type === 'client_state'), 'probe result must send client state');
 
+  const busyEnv = loadClient();
+  let busyProbeCalls = 0;
+  busyEnv.sandbox.window.__wx_channels_store__ = {
+    profile: { id: 'feed-busy', nonce_id: 'nonce-busy' },
+  };
+  busyEnv.sandbox.window.WXU = {
+    API: {
+      finderGetCommentDetail() {
+        busyProbeCalls += 1;
+        return Promise.resolve({ errCode: 0 });
+      },
+    },
+  };
+  busyEnv.api.connected = true;
+  busyEnv.api.ws = { readyState: 1, send() {} };
+  busyEnv.api.requests['collection-request'] = { key: 'key:channels:feed_profile' };
+  const deferred = await busyEnv.api.runFunctionalProbe('test-active-request');
+  assert(deferred === false, 'probe must defer while a collection request is active');
+  assert(busyProbeCalls === 0, 'deferred probe must not call the detail API');
+  assert(busyEnv.api.apiProbeStatus === 'unknown', 'deferred probe must preserve prior health state');
+
+  const requestEnv = loadClient();
+  let finishSearch;
+  requestEnv.sandbox.window.WXU = {
+    API: {},
+    API2: {
+      finderSearch() {
+        return new Promise((resolve) => { finishSearch = resolve; });
+      },
+    },
+  };
+  requestEnv.api.connected = true;
+  requestEnv.api.ws = { readyState: 1, send() {} };
+  const request = requestEnv.api.handleAPICall({
+    id: 'real-collection-request',
+    key: 'key:channels:contact_list',
+    body: { keyword: 'test', type: 1 },
+  });
+  await Promise.resolve();
+  assert(requestEnv.api.requests['real-collection-request'], 'real API call must register as active');
+  finishSearch({ errCode: 0, data: {} });
+  await request;
+  assert(!requestEnv.api.requests['real-collection-request'], 'completed API call must clear active state');
+
   const failureEnv = loadClient();
   failureEnv.sandbox.window.__wx_channels_store__ = {
     profile: { id: 'feed-2', nonce_id: 'nonce-2' },

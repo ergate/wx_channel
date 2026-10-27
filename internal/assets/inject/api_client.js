@@ -852,6 +852,13 @@ window.__wx_api_client = {
     var key = data.key;
     var body = data.body;
 
+    // Functional probes must not compete with a real collection call. Keep
+    // the in-flight map accurate for the guard in runFunctionalProbe().
+    this.requests[id] = {
+      key: key,
+      startedAt: Date.now()
+    };
+
     // 响应函数
     var self = this;
     function resp(responseData) {
@@ -1054,6 +1061,8 @@ window.__wx_api_client = {
         errMsg: err.message || 'API 调用失败',
         payload: data
       });
+    } finally {
+      delete this.requests[id];
     }
   },
 

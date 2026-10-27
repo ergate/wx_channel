@@ -391,7 +391,12 @@ func selectChannelStatus(statuses []websocket.ClientStatus, now time.Time, stale
 			continue
 		}
 		candidate = true
-		if status.APIReady && status.Fresh && statusFresh(status, now, staleAfter) {
+		// APIReady only means that at least one WXU method exists. A Channels
+		// home page may keep search alive while the feed/profile methods needed
+		// by collectors have disappeared. Treat that partial state as unhealthy
+		// so the lifecycle manager can reload the page instead of reporting a
+		// false healthy state indefinitely.
+		if status.APIReady && status.SupportsFeed && status.SupportsProfile && status.Fresh && statusFresh(status, now, staleAfter) {
 			return true, true
 		}
 	}

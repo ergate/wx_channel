@@ -74,10 +74,32 @@ func readyStatus(now time.Time) websocket.ClientStatus {
 		PagePath:         "/web/pages/home",
 		Href:             "https://channels.weixin.qq.com/web/pages/home",
 		APIReady:         true,
+		SupportsFeed:     true,
+		SupportsProfile:  true,
 		Fresh:            true,
 		ApplicationFresh: true,
 		LastPingAt:       now.Format(time.RFC3339),
 		LastSeenAt:       now.Format(time.RFC3339),
+	}
+}
+
+func TestManagerReloadsPartialAPIClientWithoutCollectionCapabilities(t *testing.T) {
+	now := time.Date(2026, 10, 27, 11, 0, 0, 0, time.Local)
+	partial := readyStatus(now)
+	partial.SupportsFeed = false
+	partial.SupportsProfile = false
+	probe := &fakeProbe{running: true}
+	opener := &fakeOpener{}
+	transport := &fakeTransport{statuses: []websocket.ClientStatus{partial}}
+	manager := testManager(probe, opener, transport, &now)
+
+	_ = manager.Tick(context.Background())
+	_ = manager.Tick(context.Background())
+	if len(transport.commands) != 1 || transport.commands[0].action != commandReload {
+		t.Fatalf("partial capability recovery commands = %#v, want one reload", transport.commands)
+	}
+	if got := manager.Snapshot().State; got != stateRecovering {
+		t.Fatalf("state = %s, want %s", got, stateRecovering)
 	}
 }
 
